@@ -4,6 +4,7 @@ from DDP_opt import DDP_Traj_Optimizer
 from envs.cart_pole import DartCartPoleEnv
 from envs.snake_7link import DartSnake7LinkEnv
 from envs.reacher2d import DartReacher2dEnv
+from envs.half_cheetah import DartHalfCheetahEnv
 from envs.inverted_double_pendulum import DartDoubleInvertedPendulumEnv
 import diffdart as dart
 
@@ -14,14 +15,17 @@ def main():
 	#Env = DartCartPoleEnv
 	#X0 = [0., 3.14, 0., 0.] 
 
-	Env = DartSnake7LinkEnv
-	X0 = None
+	#Env = DartSnake7LinkEnv
+	#X0 = None
 
 	#Env = DartReacher2dEnv
 	#X0 = None
 
 	#Env = DartDoubleInvertedPendulumEnv
 	#X0 = [0., 3.14, 0.0, 0., 0., 0.] 
+
+	Env = DartHalfCheetahEnv
+	X0 = None
 
 	
 
