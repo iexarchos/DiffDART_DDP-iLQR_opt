@@ -12,6 +12,7 @@ class DartCartPoleEnv(DiffDartEnv):#, utils.EzPickle):
         DiffDartEnv.__init__(self, 'cartpole.skel', frame_skip, dt=0.02) #4, control_bounds, dt=0.02)#, disableViewer=False)
         #utils.EzPickle.__init__(self)
         #self.action_scale = 100
+        self.control_dofs = np.array([0])
 
 
 
@@ -20,7 +21,7 @@ class DartCartPoleEnv(DiffDartEnv):#, utils.EzPickle):
         u = torch.tensor(u, requires_grad=True)
 
         #---------------------------Enter running cost:-----------------------------------------------------------
-        run_cost = torch.sum(0.05*torch.mul(u,u)) #example of quadratic cost
+        run_cost = torch.sum(0.01*torch.mul(u,u)) #example of quadratic cost
         #---------------------------------------------------------------------------------------------------------
 
         #Autodiff gradient and Hessian calculation
@@ -35,7 +36,7 @@ class DartCartPoleEnv(DiffDartEnv):#, utils.EzPickle):
 
         #---------------------------Enter terminal cost:-----------------------------------------------------------
         x_target = torch.FloatTensor([0., 0., 0., 0.])
-        coeff = torch.FloatTensor([0.0, 1000., 60., 100.])
+        coeff = torch.FloatTensor([0.0, 500., 60., 100.])
         ter_cost = torch.sum(torch.mul(coeff,torch.mul(x-x_target,x-x_target))) #example cT*(x-x_target)*2
         #--------------------------------------------------------------------------------------------------------- 
 

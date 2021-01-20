@@ -11,7 +11,6 @@ class DDP_Traj_Optimizer():
 				 T,     # Time horizon in seconds
 				 X0 = None, # State initial condition (optional; if not provided, it is obtained from world)
 				 U_guess = None, # Control initial guess (optional)
-				 lr = 0.5 # Learning rate
 				 ):
 		#From the diffDart environment, obtain the world object and the running and terminal cost functions
 		self.Env = Env()
@@ -24,8 +23,8 @@ class DDP_Traj_Optimizer():
 		self.N = int(T / self.dt) #number of timesteps
 		self.dofs =  self.robot.getNumDofs()
 		self.n_states = self.dofs*2
-		self.n_controls = self.dofs # change that as soon as you can specify control_DoFs separately.
-		self.lr = lr
+		self.control_dofs = self.Env.control_dofs
+		self.n_controls = len(self.control_dofs) # change that as soon as you can specify control_DoFs separately.
 		self.frame_skip = self.Env.frame_skip
 		assert self.frame_skip == 1 #DDP currently supports no frame skip!
 		
@@ -43,7 +42,7 @@ class DDP_Traj_Optimizer():
 		#bp()
 		if U_guess is not None:
 			if U_guess == 'random':
-				self.U = 2.0*np.random.normal(size=(self.N-1,self.n_controls))
+				self.U = 0.1*np.random.normal(size=(self.N-1,self.n_controls))
 			else:
 				self.U = U_guess.copy()
 		else:
@@ -79,7 +78,8 @@ class DDP_Traj_Optimizer():
 
 		self.Cost = []
 
-	def optimize(self,maxIter,thresh=None):
+	def optimize(self,maxIter,thresh=None,lr=0.1):
+		self.lr = lr
 		t = time.time()
 		prev_cost = np.inf
 		for i in range(maxIter):
@@ -128,7 +128,7 @@ class DDP_Traj_Optimizer():
 			Qxu = self.Lxu[j,:,:] + self.Fx[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])).T
 			Qux = self.Lux[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fx[j,:,:])).T
 			Quu = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:]))
-			bp()
+			#bp()
 			if Quu.shape[0] == 1:
 				if Quu == 0:
 					Quu+=1e-5
@@ -136,10 +136,9 @@ class DDP_Traj_Optimizer():
 				Quu_inv = 1.0/Quu
 			else:
 				if not self.is_invertible(Quu):
-					Quu+=1e-5*np.eye(Quu.shape[0])
-					bp()
 					print('Warning: singular Quu, iteration: ', j )
 					bp()
+					Quu+=1e-5*np.eye(Quu.shape[0])
 				Quu_inv = np.linalg.inv(Quu)
 
 			self.L_k[j,:,:] = -Quu_inv.dot(Qux.T) 
@@ -168,10 +167,11 @@ class DDP_Traj_Optimizer():
 		vel = x[self.dofs:]
 		self.robot.setPositions(pos)
 		self.robot.setVelocities(vel)
-		
-
+	
+		a = np.zeros(self.dofs)
+		a[self.control_dofs] =  u
 		for _ in range(self.frame_skip):
-			self.robot.setForces(u)
+			self.robot.setForces(a)
 			snapshot = dart.neural.forwardPass(self.world)
 		x_next = np.concatenate((self.robot.getPositions(), self.robot.getVelocities()))
 		if compute_grads:
@@ -187,11 +187,11 @@ class DDP_Traj_Optimizer():
 			    [posVel[-self.dofs:,-self.dofs:], velVel[-self.dofs:,-self.dofs:]]
 			])
 
+			idx = self.control_dofs-self.dofs
 			Fu = np.block([
-			    [forcePos[-self.dofs:,-self.dofs:]],
-			    [forceVel[-self.dofs:,-self.dofs:]]
-			])
-			#bp()			
+			    [forcePos[-self.dofs:,idx]],
+			    [forceVel[-self.dofs:,idx]]
+			])			
 			return x_next, Fx, Fu
 		else:
 			return x_next

@@ -18,7 +18,8 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         #    self.prev_a = np.zeros(len(self.control_bounds[0]))
         frame_skip = 1
         DiffDartEnv.__init__(self, 'snake_7link.skel', frame_skip)#, obs_dim, self.control_bounds, disableViewer=True)
-        self.ndofs = self.robot_skeleton.getNumDofs() 
+        self.ndofs = self.robot_skeleton.getNumDofs()
+        self.control_dofs = np.arange(2,self.ndofs) 
 
 #        if self.randomize_dynamics:
 #            self.bodynode_original_masses = []
