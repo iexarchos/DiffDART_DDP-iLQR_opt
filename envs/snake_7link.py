@@ -40,8 +40,8 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         u = torch.tensor(u, requires_grad=True)
         #bp()
         mask = torch.zeros(self.ndofs*2)
-        mask[self.ndofs] = 10.0
-        mask[self.ndofs+2]=-0.1
+        mask[self.ndofs] = 1.0
+        mask[self.ndofs+2]=0.001
         x_target = torch.zeros(self.ndofs*2)
         x_target[self.ndofs] = 10.0
 
@@ -49,7 +49,7 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
 
         #---------------------------Enter running cost:-----------------------------------------------------------
         run_cost = torch.sum(1e-3*torch.mul(u,u)) #example of quadratic cost
-        run_cost += torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target)))
+        run_cost += torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target))) #cost = (v0-10)^2+0.001 v2^2 : make v0 "big", i.e., close to 10, while keeping v2 low
         #---------------------------------------------------------------------------------------------------------
         #bp()
         #Autodiff gradient and Hessian calculation
@@ -68,10 +68,10 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         #ter_cost = torch.sum(torch.mul(coeff,torch.mul(x-x_target,x-x_target))) #example cT*(x-x_target)*2
         mask = torch.zeros(self.ndofs*2)
         mask[0] = 10.0
-        mask[2]=-0.1
+        mask[2]=0.1
         x_target = torch.zeros(self.ndofs*2)
         x_target[0] = 10.0
-        ter_cost = torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target)))
+        ter_cost = torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target))) #cost = 10(x0-10)^2+0.1 x2^2 : make x0 "big", i.e., close to 10, while keeping x2 low
         #--------------------------------------------------------------------------------------------------------- 
 
         #Autodiff gradient and Hessian calculation

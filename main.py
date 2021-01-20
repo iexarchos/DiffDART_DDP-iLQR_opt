@@ -13,11 +13,11 @@ def main():
 	#Env = DartCartPoleEnv
 	#X0 = [0., 3.14, 0., 0.] 
 
-	#Env = DartSnake7LinkEnv
-	#X0 = None
+	Env = DartSnake7LinkEnv
+	X0 = None
 
-	Env = DartDoubleInvertedPendulumEnv
-	X0 = [0., 3.14, 0.0, 0., 0., 0.] 
+	#Env = DartDoubleInvertedPendulumEnv
+	#X0 = [0., 3.14, 0.0, 0., 0., 0.] 
 
 	
 
@@ -32,6 +32,14 @@ def main():
 	bp()
 	c = DDP.simulate_traj(x, u, render = True)
 	print(c)
+	from matplotlib import pyplot as plt
+	plt.figure()
+	plt.plot(x)
+	plt.title('States')
+	plt.figure()
+	plt.plot(u)
+	plt.title('Controls')
+	plt.show()
 	bp()
 	DDP.gui.stopServing()
 
