@@ -96,6 +96,10 @@ class DiffDartEnv():
         #}
         
 
+        #self.gui = dart.DartGUI()
+        #self.gui.serve(8080)
+        #self.gui.stateMachine().renderWorld(self.dart_world)
+        #bp()
 
     @property
     def dt(self):

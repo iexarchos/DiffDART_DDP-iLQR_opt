@@ -3,6 +3,7 @@ from pdb import set_trace as bp
 from DDP_opt import DDP_Traj_Optimizer
 from envs.cart_pole import DartCartPoleEnv
 from envs.snake_7link import DartSnake7LinkEnv
+from envs.inverted_double_pendulum import DartDoubleInvertedPendulumEnv
 import diffdart as dart
 
 
@@ -12,8 +13,11 @@ def main():
 	#Env = DartCartPoleEnv
 	#X0 = [0., 3.14, 0., 0.] 
 
-	Env = DartSnake7LinkEnv
-	X0 = None
+	#Env = DartSnake7LinkEnv
+	#X0 = None
+
+	Env = DartDoubleInvertedPendulumEnv
+	X0 = [0., 3.14, 0.0, 0., 0., 0.] 
 
 	
 
@@ -22,14 +26,14 @@ def main():
 	maxIter = 20 # maximum number of iterations
 	threshold = 0.001 # Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
 
-	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0)
+	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0)#, U_guess='random')
 	x,u,cost = DDP.optimize(maxIter = maxIter, thresh=threshold)
 
 	bp()
 	c = DDP.simulate_traj(x, u, render = True)
 	print(c)
 	bp()
-	DDP.gui.stateMachine().stopServing()
+	DDP.gui.stopServing()
 
 
 

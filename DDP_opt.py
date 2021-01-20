@@ -39,9 +39,15 @@ class DDP_Traj_Optimizer():
 
 		self.robot.setPositions(self.X[0,0:self.dofs])
 		self.robot.setVelocities(self.X[0,self.dofs:])
-		self.U = np.zeros((self.N-1,self.n_controls))
+		#self.Env.gui.stateMachine().renderWorld(self.world)
+		#bp()
 		if U_guess is not None:
-			self.U = U_guess.copy()
+			if U_guess == 'random':
+				self.U = 2.0*np.random.normal(size=(self.N-1,self.n_controls))
+			else:
+				self.U = U_guess.copy()
+		else:
+			self.U = np.zeros((self.N-1,self.n_controls))
 
 		#initialize traj corrections:
 		self.dx = np.zeros((self.N,self.n_states))
@@ -122,17 +128,18 @@ class DDP_Traj_Optimizer():
 			Qxu = self.Lxu[j,:,:] + self.Fx[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])).T
 			Qux = self.Lux[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fx[j,:,:])).T
 			Quu = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:]))
-
+			bp()
 			if Quu.shape[0] == 1:
 				if Quu == 0:
 					Quu+=1e-5
-					print('Warning: singular Quu')
+					print('Warning: singular Quu, iteration: ', j)
 				Quu_inv = 1.0/Quu
 			else:
 				if not self.is_invertible(Quu):
 					Quu+=1e-5*np.eye(Quu.shape[0])
-					#bp()
-					print('Warning: singular Quu')
+					bp()
+					print('Warning: singular Quu, iteration: ', j )
+					bp()
 				Quu_inv = np.linalg.inv(Quu)
 
 			self.L_k[j,:,:] = -Quu_inv.dot(Qux.T) 
@@ -183,7 +190,8 @@ class DDP_Traj_Optimizer():
 			Fu = np.block([
 			    [forcePos[-self.dofs:,-self.dofs:]],
 			    [forceVel[-self.dofs:,-self.dofs:]]
-			])			
+			])
+			#bp()			
 			return x_next, Fx, Fu
 		else:
 			return x_next
