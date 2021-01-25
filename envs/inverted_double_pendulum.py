@@ -14,6 +14,7 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
             self, 'inverted_double_pendulum.skel', frame_skip, dt=0.01)#, 8, control_bounds, dt=0.01)
         self.ndofs = self.robot_skeleton.getNumDofs()
         self.control_dofs = np.array([0])
+        
         #self.init_qpos = np.array(self.robot_skeleton.q).copy()
         #self.init_qvel = np.array(self.robot_skeleton.dq).copy()
 
