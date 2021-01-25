@@ -6,6 +6,8 @@ from envs.snake_7link import DartSnake7LinkEnv
 from envs.reacher2d import DartReacher2dEnv
 from envs.half_cheetah import DartHalfCheetahEnv
 from envs.inverted_double_pendulum import DartDoubleInvertedPendulumEnv
+from envs.dog import DartDogEnv
+from envs.hopper import DartHopperEnv
 import diffdart as dart
 
 
@@ -18,24 +20,30 @@ def main():
 	#Env = DartSnake7LinkEnv
 	#X0 = None
 
-	#Env = DartReacher2dEnv
-	#X0 = None
+	Env = DartReacher2dEnv
+	X0 = None
 
 	#Env = DartDoubleInvertedPendulumEnv
 	#X0 = [0., 3.14, 0.0, 0., 0., 0.] 
 
-	Env = DartHalfCheetahEnv
-	X0 = None
+	#Env = DartHalfCheetahEnv
+	#X0 = None
+
+	#Env = DartDogEnv
+	#X0 = None
+
+	#Env = DartHopperEnv
+	#X0 = None
 
 	
 
 	T = 2.0 # planning horizon in seconds
-	lr = 0.1 #learning rate
+	lr = 0.01 #learning rate
 
-	maxIter = 40 # maximum number of iterations
+	maxIter = 100# maximum number of iterations
 	threshold = 0.001 # Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
 
-	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0, U_guess='random')
+	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0)#, U_guess='random')
 	x,u,cost = DDP.optimize(maxIter = maxIter, thresh=threshold, lr=lr)
 
 	bp()

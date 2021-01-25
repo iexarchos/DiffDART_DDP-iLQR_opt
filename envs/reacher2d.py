@@ -2,7 +2,7 @@ import numpy as np
 from envs.diffdart_env import DiffDartEnv
 from pdb import set_trace as bp
 import torch
-from .utils import ComputeCostGrad
+from .utils import ComputeCostGrad, dart_map_pos
 import diffdart as dart
 
 class DartReacher2dEnv(DiffDartEnv):
@@ -23,24 +23,21 @@ class DartReacher2dEnv(DiffDartEnv):
     def running_cost(self, x, u, compute_grads = False): #define the running cost
         x = torch.tensor(x, requires_grad=True)
         u = torch.tensor(u, requires_grad=True)
-        bp()
         
-        x_end_eff = dart.convert_to_world_space_()
+        end_eff_node = self.robot_skeleton.getBodyNode(self.robot_skeleton.getNumBodyNodes() - 1)
+        ikMap: dart.neural.IKMapping = dart.neural.IKMapping(self.dart_world)
+        ikMap.addLinearBodyNode(end_eff_node)
+        x_end_eff=dart_map_pos(self.dart_world, ikMap, x[0:self.ndofs])
 
-        mask = torch.zeros(self.ndofs*2)
-
-
-
-        mask[self.ndofs] = 10.0
-        mask[self.ndofs+2]=-0.1
-        x_target = torch.zeros(self.ndofs*2)
-        x_target[self.ndofs] = 10.0
+        #x_end_eff = dart.convert_to_world_space_positions_linear(self.dart_world,end_eff_node,x[:self.ndofs])
+        #bp()
+        x_target = torch.tensor(self.target)
 
 
 
         #---------------------------Enter running cost:-----------------------------------------------------------
-        run_cost = torch.sum(0.1*torch.mul(u,u)) #example of quadratic cost
-        run_cost += torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target)))
+        run_cost = torch.sum(0.01*torch.mul(u,u)) #example of quadratic cost
+        run_cost += torch.sum(torch.mul(x_end_eff-x_target,x_end_eff-x_target))
         #---------------------------------------------------------------------------------------------------------
         #bp()
         #Autodiff gradient and Hessian calculation
@@ -57,12 +54,16 @@ class DartReacher2dEnv(DiffDartEnv):
         #x_target = torch.FloatTensor([0., 0., 0., 0.])
         #coeff = torch.FloatTensor([0.0, 1000., 60., 100.])
         #ter_cost = torch.sum(torch.mul(coeff,torch.mul(x-x_target,x-x_target))) #example cT*(x-x_target)*2
-        mask = torch.zeros(self.ndofs*2)
-        mask[0] = 10.0
-        mask[2]=-0.1
-        x_target = torch.zeros(self.ndofs*2)
-        x_target[0] = 10.0
-        ter_cost = torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target)))
+        
+        end_eff_node = self.robot_skeleton.getBodyNode(self.robot_skeleton.getNumBodyNodes() - 1)
+        ikMap: dart.neural.IKMapping = dart.neural.IKMapping(self.dart_world)
+        ikMap.addLinearBodyNode(end_eff_node)
+        x_end_eff=dart_map_pos(self.dart_world, ikMap, x[0:self.ndofs])
+
+        #x_end_eff = dart.convert_to_world_space_positions_linear(self.dart_world,end_eff_node,x[:self.ndofs])
+
+        x_target = torch.tensor(self.target)
+        ter_cost = torch.sum(torch.mul(x_end_eff-x_target,x_end_eff-x_target))
         #--------------------------------------------------------------------------------------------------------- 
 
         #Autodiff gradient and Hessian calculation
