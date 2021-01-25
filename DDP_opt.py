@@ -24,7 +24,7 @@ class DDP_Traj_Optimizer():
 		self.dofs =  self.robot.getNumDofs()
 		self.n_states = self.dofs*2
 		self.control_dofs = self.Env.control_dofs
-		self.n_controls = len(self.control_dofs) # change that as soon as you can specify control_DoFs separately.
+		self.n_controls = len(self.control_dofs) 
 		self.frame_skip = self.Env.frame_skip
 		assert self.frame_skip == 1 #DDP currently supports no frame skip!
 		
@@ -84,7 +84,9 @@ class DDP_Traj_Optimizer():
 		prev_cost = np.inf
 		for i in range(maxIter):
 			self.forward_pass()
+			#bp()
 			self.backward_pass()
+			#bp()
 			self.update_control()
 			curr_cost = self.trajectory_rollout()
 			self.Cost.append(curr_cost)

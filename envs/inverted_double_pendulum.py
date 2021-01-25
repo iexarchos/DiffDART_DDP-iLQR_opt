@@ -12,9 +12,10 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
         frame_skip = 1
         DiffDartEnv.__init__(
             self, 'inverted_double_pendulum.skel', frame_skip, dt=0.01)#, 8, control_bounds, dt=0.01)
+        self.dart_world.setParallelVelocityAndPositionUpdates(False)
         self.ndofs = self.robot_skeleton.getNumDofs()
         self.control_dofs = np.array([0])
-        
+
         #self.init_qpos = np.array(self.robot_skeleton.q).copy()
         #self.init_qvel = np.array(self.robot_skeleton.dq).copy()
 
@@ -26,7 +27,7 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
         u = torch.tensor(u, requires_grad=True)
 
         #---------------------------Enter running cost:-----------------------------------------------------------
-        run_cost = torch.sum(0.005*torch.mul(u,u)) #example of quadratic cost
+        run_cost = torch.sum(0.00005*torch.mul(u,u)) #example of quadratic cost
         #---------------------------------------------------------------------------------------------------------
 
         #Autodiff gradient and Hessian calculation
