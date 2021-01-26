@@ -6,12 +6,12 @@ from .utils import ComputeCostGrad
 
 # swing up and balance of double inverted pendulum
 class DartDoubleInvertedPendulumEnv(DiffDartEnv):
-    def __init__(self):
+    def __init__(self,FD=False):
         control_bounds = np.array([[1.0],[-1.0]])
         #self.action_scale = 40
         frame_skip = 1
         DiffDartEnv.__init__(
-            self, 'inverted_double_pendulum.skel', frame_skip, dt=0.01)#, 8, control_bounds, dt=0.01)
+            self, 'inverted_double_pendulum.skel', frame_skip, dt=0.01,FD=FD)#, 8, control_bounds, dt=0.01)
         self.dart_world.setParallelVelocityAndPositionUpdates(False)
         self.ndofs = self.robot_skeleton.getNumDofs()
         self.control_dofs = np.array([0])

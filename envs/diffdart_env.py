@@ -6,7 +6,7 @@ import numpy as np
 
 
 class DiffDartEnv():
-    def __init__(self, model_paths, frame_skip, dt=0.002): #observation_size, action_bounds, \
+    def __init__(self, model_paths, frame_skip, dt=0.002, FD=False): #observation_size, action_bounds, \
                  #dt=0.002,obs_type="parameter", action_type="continuous", visualize=True):
         
 #        self.viewer = None
@@ -29,6 +29,7 @@ class DiffDartEnv():
             full_paths.append(fullpath)
 
         self.dart_world = dart.simulation.World()
+        self.dart_world.setUseFDOverride(FD) #TODO: USING FD FOR GRADIENTS. REMOVE THIS ONCE GRADIENT ISSUES ARE FIXED!
 #        self.np_random = np.random
         
         if full_paths[0][-5:] == '.urdf':

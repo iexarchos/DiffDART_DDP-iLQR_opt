@@ -2,42 +2,36 @@ import numpy as np
 from envs.diffdart_env import DiffDartEnv
 from pdb import set_trace as bp
 import torch
-from .utils import ComputeCostGrad, dart_map_pos
-import diffdart as dart
+from .utils import ComputeCostGrad
 
-class DartReacher2dEnv(DiffDartEnv):
+class DartDogEnv(DiffDartEnv):
     def __init__(self,FD=False):
-        self.target = np.array([0.1, 0.01, -0.1])
-        #self.action_scale = np.array([200, 200])
-        #self.control_bounds = np.array([[1.0, 1.0],[-1.0, -1.0]])
-        frame_skip = 1
-        DiffDartEnv.__init__(self, 'reacher2d.skel', frame_skip,FD=FD)#, 11, self.control_bounds, dt=0.01, disableViewer=False)
+        #self.control_bounds = np.array([[1.0]*16,[-1.0]*16])
+        #self.action_scale = 200
+        #obs_dim = 43
+        frame_skip=1
+        DiffDartEnv.__init__(self, 'dog.skel', frame_skip,FD=FD)#, obs_dim, self.control_bounds, disableViewer=False)
         self.ndofs = self.robot_skeleton.getNumDofs()
-        self.control_dofs = np.arange(0,self.ndofs) #TODO needs to change!
-        #for s in self.dart_world.skeletons:
-        #    s.set_self_collision_check(False)
-        #    for n in s.bodynodes:
-        #        n.set_collidable(False)
+        #bp()
+        self.control_dofs = np.arange(0,self.ndofs)
         #utils.EzPickle.__init__(self)
+
 
     def running_cost(self, x, u, compute_grads = False): #define the running cost
         x = torch.tensor(x, requires_grad=True)
         u = torch.tensor(u, requires_grad=True)
-        
-        end_eff_node = self.robot_skeleton.getBodyNode(self.robot_skeleton.getNumBodyNodes() - 1)
-        ikMap: dart.neural.IKMapping = dart.neural.IKMapping(self.dart_world)
-        ikMap.addLinearBodyNode(end_eff_node)
-        x_end_eff=dart_map_pos(self.dart_world, ikMap, x[0:self.ndofs])
-
-        #x_end_eff = dart.convert_to_world_space_positions_linear(self.dart_world,end_eff_node,x[:self.ndofs])
         #bp()
-        x_target = torch.tensor(self.target)
+        mask = torch.zeros(self.ndofs*2)
+        mask[self.ndofs] = 1.0
+        #mask[self.ndofs+2]=0.001
+        x_target = torch.zeros(self.ndofs*2)
+        x_target[self.ndofs] = 10.0
 
 
 
         #---------------------------Enter running cost:-----------------------------------------------------------
-        run_cost = torch.sum(0.01*torch.mul(u,u)) #example of quadratic cost
-        run_cost += torch.sum(torch.mul(x_end_eff-x_target,x_end_eff-x_target))
+        run_cost = torch.sum(1e-3*torch.mul(u,u)) #example of quadratic cost
+        run_cost += torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target))) #cost = (v0-10)^2: make v0 "big", i.e., close to x_target
         #---------------------------------------------------------------------------------------------------------
         #bp()
         #Autodiff gradient and Hessian calculation
@@ -54,16 +48,12 @@ class DartReacher2dEnv(DiffDartEnv):
         #x_target = torch.FloatTensor([0., 0., 0., 0.])
         #coeff = torch.FloatTensor([0.0, 1000., 60., 100.])
         #ter_cost = torch.sum(torch.mul(coeff,torch.mul(x-x_target,x-x_target))) #example cT*(x-x_target)*2
-        
-        end_eff_node = self.robot_skeleton.getBodyNode(self.robot_skeleton.getNumBodyNodes() - 1)
-        ikMap: dart.neural.IKMapping = dart.neural.IKMapping(self.dart_world)
-        ikMap.addLinearBodyNode(end_eff_node)
-        x_end_eff=dart_map_pos(self.dart_world, ikMap, x[0:self.ndofs])
-
-        #x_end_eff = dart.convert_to_world_space_positions_linear(self.dart_world,end_eff_node,x[:self.ndofs])
-
-        x_target = torch.tensor(self.target)
-        ter_cost = torch.sum(torch.mul(x_end_eff-x_target,x_end_eff-x_target))
+        mask = torch.zeros(self.ndofs*2)
+        mask[0] = 10.0
+        #mask[2]=0.1
+        x_target = torch.zeros(self.ndofs*2)
+        x_target[0] = 10.0
+        ter_cost = torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target))) #cost = 10(x0-10)^2+0.1 x2^2 : make x0 "big", i.e., close to xtarget
         #--------------------------------------------------------------------------------------------------------- 
 
         #Autodiff gradient and Hessian calculation
@@ -90,6 +80,11 @@ class DartReacher2dEnv(DiffDartEnv):
 
 
 
+
+
+
+
+
 #-----------------------------------------------------------------------------------------------------
 #------ WARNING: THE FOLLOWING ARE NOT USED. ONLY RETAINED IN CASE WE WANT TO TRAIN AN RL POLICY -----
 #-----------------------------------------------------------------------------------------------------
@@ -102,46 +97,43 @@ class DartReacher2dEnv(DiffDartEnv):
                 clamped_control[i] = self.control_bounds[0][i]
             if clamped_control[i] < self.control_bounds[1][i]:
                 clamped_control[i] = self.control_bounds[1][i]
-        tau = np.multiply(clamped_control, self.action_scale)
+        tau = np.zeros(self.robot_skeleton.ndofs)
+        tau[6:] = clamped_control * self.action_scale
 
+        posbefore = self.robot_skeleton.bodynodes[0].com()[0]
         self.do_simulation(tau, self.frame_skip)
-        ob = self._get_obs()
+        posafter = self.robot_skeleton.bodynodes[0].com()[0]
+        height = self.robot_skeleton.bodynodes[0].com()[1]
+        side_deviation = abs(self.robot_skeleton.bodynodes[0].com()[2])
 
-        vec = self.robot_skeleton.bodynodes[-1].com() - self.target
-
-        reward_dist = - np.linalg.norm(vec)
-        reward_ctrl = - np.square(a).sum()#*0.1
-        reward = reward_dist + reward_ctrl
+        alive_bonus = 1.0
+        reward = 0.6*(posafter - posbefore) / self.dt
+        reward += alive_bonus
+        reward -= 1e-3 * np.square(a).sum()
 
         s = self.state_vector()
-        #done = not (np.isfinite(s).all() and (-reward_dist > 0.02))
-        done = False
+        done = not (np.isfinite(s).all() and (np.abs(s[2:]) < 100).all() and
+                    (height > .7) and (height < 1.8) and (side_deviation < .4))
+        ob = self._get_obs()
 
         return ob, reward, done, {}
 
     def _get_obs(self):
-        theta = self.robot_skeleton.q
-        vec = self.robot_skeleton.bodynodes[-1].com() - self.target
-        return np.concatenate([np.cos(theta), np.sin(theta), [self.target[0], self.target[2]], self.robot_skeleton.dq, vec]).ravel()
+        state =  np.concatenate([
+            self.robot_skeleton.q[1:],
+            np.clip(self.robot_skeleton.dq,-10,10)
+        ])
+
+        return state
 
     def reset_model(self):
         self.dart_world.reset()
-        qpos = self.robot_skeleton.q + self.np_random.uniform(low=-.01, high=.01, size=self.robot_skeleton.ndofs)
+        qpos = self.robot_skeleton.q + self.np_random.uniform(low=-.005, high=.005, size=self.robot_skeleton.ndofs)
         qvel = self.robot_skeleton.dq + self.np_random.uniform(low=-.005, high=.005, size=self.robot_skeleton.ndofs)
         self.set_state(qpos, qvel)
-        while True:
-            self.target = self.np_random.uniform(low=-.2, high=.2, size=3)
-            self.target[1] = 0.0
-            if np.linalg.norm(self.target) < .2: break
-        self.target[1] = 0.01
-
-        self.dart_world.skeletons[1].q=[0, 0, 0, self.target[0], self.target[1], self.target[2]]
-
 
         return self._get_obs()
 
-
     def viewer_setup(self):
-        self._get_viewer().scene.tb.trans[2] = -1.0
-        self._get_viewer().scene.tb._set_theta(-45)
+        self._get_viewer().scene.tb.trans[2] = -15.5
         self.track_skeleton_id = 0

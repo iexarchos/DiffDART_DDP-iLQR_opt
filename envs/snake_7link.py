@@ -6,7 +6,7 @@ from .utils import ComputeCostGrad
 
 
 class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
-    def __init__(self):
+    def __init__(self,FD=False):
         #self.control_bounds = np.array([[1.0, 1.0, 1.0, 1.0, 1.0, 1.0],[-1.0, -1.0, -1.0, -1.0, -1.0, -1.0]])
         #self.action_scale = 200
         #self.include_action_in_obs = False
@@ -17,9 +17,10 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         #    obs_dim += len(self.control_bounds[0])
         #    self.prev_a = np.zeros(len(self.control_bounds[0]))
         frame_skip = 1
-        DiffDartEnv.__init__(self, 'snake_7link.skel', frame_skip)#, obs_dim, self.control_bounds, disableViewer=True)
+        DiffDartEnv.__init__(self, 'snake_7link.skel', frame_skip, dt=0.01,FD=FD)#, obs_dim, self.control_bounds, disableViewer=True)
         self.ndofs = self.robot_skeleton.getNumDofs()
         self.control_dofs = np.arange(2,self.ndofs) 
+        #self.dart_world.setParallelVelocityAndPositionUpdates(False)
 
 #        if self.randomize_dynamics:
 #            self.bodynode_original_masses = []

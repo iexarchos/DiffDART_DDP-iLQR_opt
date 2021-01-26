@@ -11,9 +11,10 @@ class DDP_Traj_Optimizer():
 				 T,     # Time horizon in seconds
 				 X0 = None, # State initial condition (optional; if not provided, it is obtained from world)
 				 U_guess = None, # Control initial guess (optional)
+				 FD = False #whether to use finite differencing for gradients
 				 ):
 		#From the diffDart environment, obtain the world object and the running and terminal cost functions
-		self.Env = Env()
+		self.Env = Env(FD=FD)
 		self.world = self.Env.dart_world
 		self.robot = self.Env.robot_skeleton
 		self.running_cost = self.Env.run_cost()
@@ -42,6 +43,7 @@ class DDP_Traj_Optimizer():
 		#bp()
 		if U_guess is not None:
 			if U_guess == 'random':
+				np.random.seed(1)
 				self.U = 0.1*np.random.normal(size=(self.N-1,self.n_controls))
 			else:
 				self.U = U_guess.copy()
@@ -130,6 +132,8 @@ class DDP_Traj_Optimizer():
 			Qxu = self.Lxu[j,:,:] + self.Fx[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])).T
 			Qux = self.Lux[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fx[j,:,:])).T
 			Quu = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:]))
+			#print('Norm of Quu: ', np.linalg.norm(Quu,ord='fro'))
+			#print('Norm FuVxxFu: ', np.linalg.norm(self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])),ord='fro'))
 			#bp()
 			if Quu.shape[0] == 1:
 				if Quu == 0:
@@ -139,6 +143,10 @@ class DDP_Traj_Optimizer():
 			else:
 				if not self.is_invertible(Quu):
 					print('Warning: singular Quu, iteration: ', j )
+					print('Norm of Fu: ', np.linalg.norm(self.Fu[j,:,:],ord='fro') )
+					print('Norm of Quu: ', np.linalg.norm(Quu,ord='fro'))
+					print('Norm FuVxxFu: ', np.linalg.norm(self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])),ord='fro'))
+					print('Norm of Vxx(i+1): ', np.linalg.norm(self.Vxx[j+1,:,:],ord='fro'))
 					bp()
 					Quu+=1e-5*np.eye(Quu.shape[0])
 				Quu_inv = np.linalg.inv(Quu)
@@ -149,7 +157,7 @@ class DDP_Traj_Optimizer():
 			self.V[j] = Q0 + Qu.T.dot(self.l_k[j,:])+0.5*self.l_k[j,:].T.dot(Quu.dot(self.l_k[j,:]))
 			self.Vx[j,:] = Qx + self.L_k[j,:,:].T.dot(Qu)+self.l_k[j,:].dot(Qxu)+self.L_k[j,:,:].T.dot(Quu.dot(self.l_k[j,:]))
 			self.Vxx[j,:,:] = Qxx + self.L_k[j,:,:].T.dot(Qxu) + Qux.dot(self.L_k[j,:,:]) + self.L_k[j,:,:].T.dot(Quu.dot(self.L_k[j,:,:]))
-
+			#print('Norm of Vxx: ', np.linalg.norm(self.Vxx[j,:,:],ord='fro'))
 	def update_control(self):
 		for j in range(self.N-1):
 			self.du[j,:] = self.l_k[j,:] + self.L_k[j,:,:].dot(self.dx[j,:])
