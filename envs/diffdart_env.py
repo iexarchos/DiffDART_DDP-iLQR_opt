@@ -29,7 +29,7 @@ class DiffDartEnv():
             full_paths.append(fullpath)
 
         self.dart_world = dart.simulation.World()
-        self.dart_world.setUseFDOverride(FD) #TODO: USING FD FOR GRADIENTS. REMOVE THIS ONCE GRADIENT ISSUES ARE FIXED!
+        
 #        self.np_random = np.random
         
         if full_paths[0][-5:] == '.urdf':
@@ -44,7 +44,7 @@ class DiffDartEnv():
                 skeleton = loader.parseSkeleton(full_paths[0])
                 self.dart_world.addSkeleton(skeleton)
 
-        
+        self.dart_world.setUseFDOverride(FD) #TODO: USING FD FOR GRADIENTS. REMOVE THIS ONCE GRADIENT ISSUES ARE FIXED!
         self.dart_world.setTimeStep(dt)
         num_skel = self.dart_world.getNumSkeletons()
         self.robot_skeleton = self.dart_world.getSkeleton(num_skel-1) # assume that the skeleton of interest is always the last one

@@ -17,8 +17,8 @@ def main():
 	#Env = DartCartPoleEnv
 	#X0 = [0., 3.14, 0., 0.] 
 
-	Env = DartSnake7LinkEnv
-	X0 = None
+	#Env = DartSnake7LinkEnv
+	#X0 = None
 
 	#Env = DartReacher2dEnv
 	#X0 = None
@@ -26,8 +26,8 @@ def main():
 	#Env = DartDoubleInvertedPendulumEnv
 	#X0 = [0., 3.14, 0.0, 0., 0., 0.] 
 
-	#Env = DartHalfCheetahEnv
-	#X0 = None
+	Env = DartHalfCheetahEnv
+	X0 = None
 
 	#Env = DartDogEnv
 	#X0 = None
@@ -37,11 +37,11 @@ def main():
 
 	
 	FD = True
-	U_guess = 'random' #choose None or 'random' (use random for snake)
+	U_guess = None# 'random' #choose None or 'random' (use random for snake)
 	T = 2.0 # planning horizon in seconds
 	lr = 0.01 #learning rate
 
-	maxIter = 100# maximum number of iterations
+	maxIter = 20# maximum number of iterations
 	threshold = 0.001 # Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
 
 	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0,FD=FD,U_guess=U_guess)
