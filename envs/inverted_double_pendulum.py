@@ -27,7 +27,7 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
         u = torch.tensor(u, requires_grad=True)
 
         #---------------------------Enter running cost:-----------------------------------------------------------
-        run_cost = torch.sum(0.00005*torch.mul(u,u)) #example of quadratic cost
+        run_cost = torch.sum(0.1*torch.mul(u,u)) #example of quadratic cost
         #---------------------------------------------------------------------------------------------------------
 
         #Autodiff gradient and Hessian calculation
@@ -42,7 +42,7 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
 
         #---------------------------Enter terminal cost:-----------------------------------------------------------
         x_target = torch.FloatTensor([0., 0., 0., 0., 0. , 0.])
-        coeff = torch.FloatTensor([0.0, 100., 100., 60., 10., 10.])
+        coeff = torch.FloatTensor([0.0, 100., 100., 60., 20., 20.])
         ter_cost = torch.sum(torch.mul(coeff,torch.mul(x-x_target,x-x_target))) #example cT*(x-x_target)*2
         #--------------------------------------------------------------------------------------------------------- 
 

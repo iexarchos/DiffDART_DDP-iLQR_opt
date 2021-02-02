@@ -45,7 +45,7 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         mask[self.ndofs] = 1.0
         mask[self.ndofs+2]=0.001
         x_target = torch.zeros(self.ndofs*2)
-        x_target[self.ndofs] = 10.0
+        x_target[self.ndofs] = 1.0
 
 
 
@@ -72,7 +72,7 @@ class DartSnake7LinkEnv(DiffDartEnv):#, utils.EzPickle):
         mask[0] = 10.0
         mask[2]=0.1
         x_target = torch.zeros(self.ndofs*2)
-        x_target[0] = 10.0
+        x_target[0] = 1.0
         ter_cost = torch.sum(torch.mul(mask,torch.mul(x-x_target,x-x_target))) #cost = 10(x0-10)^2+0.1 x2^2 : make x0 "big", i.e., close to 10, while keeping x2 low
         #--------------------------------------------------------------------------------------------------------- 
 
