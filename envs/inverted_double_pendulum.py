@@ -12,7 +12,7 @@ class DartDoubleInvertedPendulumEnv(DiffDartEnv):
         frame_skip = 1
         DiffDartEnv.__init__(
             self, 'inverted_double_pendulum.skel', frame_skip, dt=0.01,FD=FD)#, 8, control_bounds, dt=0.01)
-        self.dart_world.setParallelVelocityAndPositionUpdates(False)
+        #self.dart_world.setParallelVelocityAndPositionUpdates(False)
         self.ndofs = self.robot_skeleton.getNumDofs()
         self.control_dofs = np.array([0])
 
