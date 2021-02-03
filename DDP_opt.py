@@ -80,8 +80,11 @@ class DDP_Traj_Optimizer():
 
 		self.Cost = []
 
-	def optimize(self,maxIter,thresh=None,lr=0.1):
+	def optimize(self,maxIter,thresh=None,lr=0.1,linesearch=False):
 		self.lr = lr
+		self.linesearch = linesearch
+		if self.linesearch:
+			self.initialize_linesearch()
 		t = time.time()
 		prev_cost = np.inf
 		for i in range(maxIter):
@@ -90,9 +93,13 @@ class DDP_Traj_Optimizer():
 			self.backward_pass()
 			#bp()
 			self.update_control()
-			curr_cost = self.trajectory_rollout()
+
+			curr_cost = self.trajectory_rollout(linesearch=self.linesearch)
 			self.Cost.append(curr_cost)
-			print('Iteration: ', i+1, ', trajectory cost: ', curr_cost)
+			if not self.linesearch:
+				print('Iteration: ', i+1, ', trajectory cost: ', curr_cost)
+			else:
+				print('Iteration: ', i+1, ', trajectory cost: ', curr_cost,' (linesearch idx: ', self.iopt,')')
 			if thresh is not None:
 				if abs(prev_cost-curr_cost)<thresh:
 					print('Optimization threshold met, exiting...')
@@ -101,6 +108,20 @@ class DDP_Traj_Optimizer():
 					prev_cost = curr_cost.copy()
 		print('---Optimization completed in ',time.time()-t,'sec---')
 		return self.X, self.U, self.Cost
+
+	def initialize_linesearch(self):
+		num_trials, lr0, factor = 6, self.lr, 0.5 # five trials, starting at original lr, x0.5 every time
+		lrs = np.empty((num_trials,))
+		lrs[0], lrs[1:] = lr0, factor
+		self.lrs = np.cumprod(lrs)
+		self.Uls = np.zeros((self.U.shape[0],self.U.shape[1],num_trials))
+		self.Xls = np.zeros((self.X.shape[0],self.X.shape[1],num_trials))
+		self.update_Xls_Uls() 
+
+	def update_Xls_Uls(self):
+		self.Uls[:,:,:]=self.U[:,:,np.newaxis]
+		self.Xls[:,:,:] =self.X[:,:,np.newaxis]
+
 
 
 	def forward_pass(self):
@@ -162,15 +183,40 @@ class DDP_Traj_Optimizer():
 		for j in range(self.N-1):
 			self.du[j,:] = self.l_k[j,:] + self.L_k[j,:,:].dot(self.dx[j,:])
 			self.dx[j+1,:] = self.Fx[j,:,:].dot(self.dx[j,:])+self.Fu[j,:,:].dot(self.du[j,:])
-			self.U[j,:] = self.U[j,:] + self.lr *self.du[j,:]
+			
+		if not self.linesearch:
+			self.U = self.U + self.lr *self.du
+		elif self.linesearch:
+			lrs = self.lrs[np.newaxis,np.newaxis,:]
+			self.Uls = self.Uls + lrs*self.du[:,:,np.newaxis]
 
-	def trajectory_rollout(self,render=False):
-		cost = 0
-		for j in range(self.N-1):
-			self.X[j+1,:] = self.dynamics(self.X[j,:], self.U[j,:])
-			cost += self.running_cost(self.X[j,:],self.U[j,:])*self.dt
-		cost += self.terminal_cost(self.X[-1,:])
-		return cost
+
+	def trajectory_rollout(self,render=False,linesearch=False):
+		if not linesearch:
+			cost = 0
+			for j in range(self.N-1):
+				self.X[j+1,:] = self.dynamics(self.X[j,:], self.U[j,:])
+				cost += self.running_cost(self.X[j,:],self.U[j,:])*self.dt
+			cost += self.terminal_cost(self.X[-1,:])
+			return cost
+		
+		elif linesearch:
+			cost = np.zeros((self.lrs.shape[0],))
+			for i in range(len(cost)):
+				for j in range(self.N-1):
+					self.Xls[j+1,:,i] = self.dynamics(self.Xls[j,:,i], self.Uls[j,:,i])
+					cost[i] += self.running_cost(self.Xls[j,:,i], self.Uls[j,:,i])*self.dt
+				cost[i] += self.terminal_cost(self.Xls[-1,:,i])
+			iopt = np.argmin(cost)
+			#print('Linesearch index: ', iopt)
+			#bp()
+			self.X[:,:]=self.Xls[:,:,iopt]
+			self.U[:,:]=self.Uls[:,:,iopt]
+			self.iopt = iopt
+			self.update_Xls_Uls()
+
+			return cost[iopt]
+
 
 	def dynamics(self,x,u,compute_grads = False):
 		pos = x[:self.dofs]
