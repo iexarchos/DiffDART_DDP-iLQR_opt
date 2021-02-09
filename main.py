@@ -37,16 +37,17 @@ def main():
 	#X0 = None
 
 	
-	FD = True #whether or not to use finite differencing
-	U_guess = None# 'random' #choose None or 'random' (use random for snake)
+	FD = False #whether or not to use finite differencing
+	U_guess = 'random'# 'random' #choose None or 'random' (use random for snake)
 	T = 2.0 # planning horizon in seconds
-	lr = 0.01 #learning rate
+	lr = 1.0 #learning rate, default value 1.0
+	patience = 8
 
 	maxIter = 500# maximum number of iterations
-	threshold = None# 0.001 # Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
+	threshold = None #0.0001#Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
 
-	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0,FD=FD,U_guess=U_guess)
-	x,u,cost = DDP.optimize(maxIter = maxIter, thresh=threshold, lr=lr,linesearch=True)
+	DDP = DDP_Traj_Optimizer(Env=Env,T=T,X0=X0,FD=FD,U_guess=U_guess,lr=lr,patience=patience)
+	x,u,cost = DDP.optimize(maxIter = maxIter, thresh=threshold)# lr=lr,linesearch=False)
 
 	bp()
 	c = DDP.simulate_traj(x, u, render = True)
@@ -58,6 +59,10 @@ def main():
 	plt.figure()
 	plt.plot(u)
 	plt.title('Controls')
+	plt.figure()
+	plt.plot(cost)
+	plt.title('Cost')
+	plt.xlabel('iteration')
 	plt.show()
 	bp()
 	DDP.gui.stopServing()

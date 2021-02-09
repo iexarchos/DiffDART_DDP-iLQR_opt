@@ -11,7 +11,9 @@ class DDP_Traj_Optimizer():
 				 T,     # Time horizon in seconds
 				 X0 = None, # State initial condition (optional; if not provided, it is obtained from world)
 				 U_guess = None, # Control initial guess (optional)
-				 FD = False #whether to use finite differencing for gradients
+				 FD = False, #whether to use finite differencing for gradients
+				 lr = 1.0, # initial lr value (will be reduced with linesearch)
+				 patience = 8 # linesearch/regularization patience
 				 ):
 		#From the diffDart environment, obtain the world object and the running and terminal cost functions
 		self.Env = Env(FD=FD)
@@ -50,172 +52,159 @@ class DDP_Traj_Optimizer():
 		else:
 			self.U = np.zeros((self.N-1,self.n_controls))
 
-		#initialize traj corrections:
-		self.dx = np.zeros((self.N,self.n_states))
-		self.du = np.zeros((self.N-1,self.n_controls))
 
 		# initialize Cost derivative matrices
-		self.L0 = np.zeros((self.N-1,))
 		self.Lx = np.zeros((self.N-1,self.n_states))
 		self.Lu = np.zeros((self.N-1,self.n_controls))
 		self.Lxx = np.zeros((self.N-1,self.n_states,self.n_states))
 		self.Luu = np.zeros((self.N-1,self.n_controls,self.n_controls))
 		self.Lux = np.zeros((self.N-1,self.n_states,self.n_controls))
-		self.Lxu = np.zeros((self.N-1,self.n_controls,self.n_states))
 
 		# initialize Jacobians of dynamics, w.r.t. state x and control u
 		self.Fx = np.zeros((self.N-1,self.n_states,self.n_states))   
 		self.Fu = np.zeros((self.N-1,self.n_states,self.n_controls)) 
-
-		# initialize Value function and derivatives
-		self.V = np.zeros((self.N,)) 
-		self.Vx = np.zeros((self.N,self.n_states))
-		self.Vxx = np.zeros((self.N,self.n_states,self.n_states))
 		
 
-		# initialize trajectory and control update matrices
-		self.L_k = np.zeros((self.N-1,self.n_controls,self.n_states))
-		self.l_k = np.zeros((self.N-1,self.n_controls))
+		# initialize feedback and feedforward control updates
+		self.K = np.zeros((self.N-1,self.n_controls,self.n_states))
+		self.k = np.zeros((self.N-1,self.n_controls))
 
 
-		self.Cost = []
+		self.Costs = []
+		#self.DeltaJ = 1.0 #Initialize DeltaJ
+		self.alpha_reset_value = lr # initial learning rate value
+		self.alpha = self.alpha_reset_value #initialize learning rate
+		self.patience_reset_value = patience #linesearch patience
+		self.patience = self.patience_reset_value 
+		self.early_termination = False
+		
+		#regularization schedule:
+		self.DELTA0 = 2. 
+		self.DELTA = self.DELTA0
+		self.mu_min = 1e-6
+		self.mu = 100.*self.mu_min
 
-	def optimize(self,maxIter,thresh=None,lr=0.1,linesearch=False):
-		self.lr = lr
-		self.linesearch = linesearch
-		if self.linesearch:
-			self.initialize_linesearch()
+
+		
+
+	def optimize(self,maxIter,thresh=None):
 		t = time.time()
+		self.cost = self.simulate_traj(self.X, self.U)
 		prev_cost = np.inf
-		for i in range(maxIter):
+		i = 0
+		while i < maxIter and not self.early_termination:
+			#curr_cost = self.forward_pass()
 			self.forward_pass()
-			#bp()
 			self.backward_pass()
-			#bp()
-			self.update_control()
+			self.Costs.append(self.cost)
 
-			curr_cost = self.trajectory_rollout(linesearch=self.linesearch)
-			self.Cost.append(curr_cost)
-			if not self.linesearch:
-				print('Iteration: ', i+1, ', trajectory cost: ', curr_cost)
-			else:
-				print('Iteration: ', i+1, ', trajectory cost: ', curr_cost,' (linesearch idx: ', self.iopt,')')
+			print('Iteration: ', i+1, ', trajectory cost: ', self.cost)
+
 			if thresh is not None:
-				if abs(prev_cost-curr_cost)<thresh:
+				if abs(prev_cost-self.cost)<thresh:
 					print('Optimization threshold met, exiting...')
 					break
 				else:
-					prev_cost = curr_cost.copy()
+					prev_cost = self.cost.copy()
+			i += 1
 		print('---Optimization completed in ',time.time()-t,'sec---')
-		return self.X, self.U, self.Cost
-
-	def initialize_linesearch(self):
-		num_trials, lr0, factor = 6, self.lr, 0.5 # five trials, starting at original lr, x0.5 every time
-		lrs = np.empty((num_trials,))
-		lrs[0], lrs[1:] = lr0, factor
-		self.lrs = np.cumprod(lrs)
-		self.Uls = np.zeros((self.U.shape[0],self.U.shape[1],num_trials))
-		self.Xls = np.zeros((self.X.shape[0],self.X.shape[1],num_trials))
-		self.update_Xls_Uls() 
-
-	def update_Xls_Uls(self):
-		self.Uls[:,:,:]=self.U[:,:,np.newaxis]
-		self.Xls[:,:,:] =self.X[:,:,np.newaxis]
-
+		return self.X, self.U, self.Costs
 
 
 	def forward_pass(self):
+		Xnew = self.X.copy()
+		Unew = self.U.copy()
+		cost = 0.0
 		for j in range(self.N-1):
-        
-			l0, l_x, l_xx, l_u, l_uu, l_ux, l_xu = self.running_cost(self.X[j,:],self.U[j,:],compute_grads=True)
-			self.L0[j] = l0*self.dt
+        	
+			Unew[j,:] = Unew[j,:] + self.alpha*self.k[j,:]+self.K[j,:,:].dot(Xnew[j,:]-self.X[j,:]) #update control (zero in first iteration)
+
+			l0, l_x, l_xx, l_u, l_uu, l_ux, l_xu = self.running_cost(Xnew[j,:],Unew[j,:],compute_grads=True)
+			
+			cost+=l0*self.dt
 			self.Lx[j,:] = l_x*self.dt
 			self.Lu[j,:] = l_u*self.dt
 			self.Lxx[j,:] = l_xx*self.dt
 			self.Luu[j,:,:] = l_uu*self.dt
 			self.Lux[j,:,:] = l_ux*self.dt
-			self.Lxu[j,:,:] = l_xu*self.dt
-
-			x_next, Fx, Fu = self.dynamics(self.X[j,:],self.U[j,:],compute_grads=True)
-
-			self.X[j+1,:] = x_next
-			self.Fx[j,:,:] = Fx
-			self.Fu[j,:,:] = Fu    
 		
+			Xnew[j+1,:], self.Fx[j,:,:], self.Fu[j,:,:] = self.dynamics(Xnew[j,:],Unew[j,:],compute_grads=True)
+		
+		cost+= self.terminal_cost(Xnew[-1,:])
+		
+		#Linesearch back-tracking
+		if  self.check_inf_nan(cost) or  self.check_inf_nan(Xnew[-1,:]) or not (self.cost - cost) >= 0:
+			
+			if self.patience == 0:
+				print('Linesearch patience limit met, exiting... ')
+				self.early_termination = True
+			else:
+				self.alpha *= 0.5
+				#print('Linesearch: decreasing alpha to ', self.alpha)
+				self.patience -= 1	
+				self.forward_pass() #retry with smaller learning rate
+		else:
+			self.X=Xnew
+			self.U=Unew
+			self.cost = cost
+			self.patience = self.patience_reset_value #reset linesearch patience
+			self.alpha = self.alpha_reset_value #reset learning rate
+			#return cost
+	
+
+
 	def backward_pass(self):
 		# initialize backward pass:
-		self.V[-1], self.Vx[-1,:], self.Vxx[-1,:,:] = self.terminal_cost(self.X[-1,:],compute_grads=True)
-		for j in range(self.N-2,-1,-1):
-			Q0 = self.L0[j] +self.V[j+1]
-			Qx = self.Lx[j,:] + self.Fx[j,:,:].T.dot(self.Vx[j+1,:])
-			Qu = self.Lu[j,:] + self.Fu[j,:,:].T.dot(self.Vx[j+1,:])
-			Qxx = self.Lxx[j,:,:] + self.Fx[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fx[j,:,:]))
-			Qxu = self.Lxu[j,:,:] + self.Fx[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])).T
-			Qux = self.Lux[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fx[j,:,:])).T
-			Quu = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:]))
-			#print('Norm of Quu: ', np.linalg.norm(Quu,ord='fro'))
-			#print('Norm FuVxxFu: ', np.linalg.norm(self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])),ord='fro'))
+		#self.DeltaJ = 0.0
+		_, Vx, Vxx = self.terminal_cost(self.X[-1,:],compute_grads=True)
+		j = self.N-2
+		while j >= 0 and not self.early_termination:
+
+			Qx = self.Lx[j,:] + self.Fx[j,:,:].T.dot(Vx)
+			Qu = self.Lu[j,:] + self.Fu[j,:,:].T.dot(Vx)
+			Qxx = self.Lxx[j,:,:] + self.Fx[j,:,:].T.dot(Vxx.dot(self.Fx[j,:,:]))
+			Qux = self.Lux[j,:,:].T + self.Fu[j,:,:].T.dot(Vxx.dot(self.Fx[j,:,:]))
+			Quu = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot(Vxx.dot(self.Fu[j,:,:]))
+			Quubar = self.Luu[j,:,:] + self.Fu[j,:,:].T.dot((Vxx+self.mu*np.eye(Vxx.shape[0])).dot(self.Fu[j,:,:]))
+			Quxbar = self.Lux[j,:,:] + self.Fu[j,:,:].T.dot((Vxx+self.mu*np.eye(Vxx.shape[0])).dot(self.Fx[j,:,:])).T
 			#bp()
-			if Quu.shape[0] == 1:
-				if Quu == 0:
-					Quu+=1e-5
-					print('Warning: singular Quu, iteration: ', j)
-				Quu_inv = 1.0/Quu
+
+			if not self.is_invertible(Quubar):
+				if self.patience == 0:
+					self.early_termination = True
+					print('Regularization patience limit met, exiting... ')
+					break
+					#self.backward_pass() # re-enter with early termination flag on
+					#return 
+				else: 	
+					print('Warning: singular Quu, iteration: ', j ,'- repeating backward pass with increased mu.')
+					#print('Norm of Fu: ', np.linalg.norm(self.Fu[j,:,:],ord='fro') )
+					#print('Norm of Quu: ', np.linalg.norm(Quu,ord='fro'))
+					#print('Norm FuVxxFu: ', np.linalg.norm(self.Fu[j,:,:].T.dot((Vxx+self.mu*np.eye(Vxx.shape[0])).dot(self.Fu[j,:,:])),ord='fro'))
+					#print('Norm of Vxx(i+1): ', np.linalg.norm(Vxx,ord='fro'))
+					#bp()
+					break
+					self.increase_mu()
+					self.patience -= 1
+					self.backward_pass() #retry with larger regularization
 			else:
-				if not self.is_invertible(Quu):
-					print('Warning: singular Quu, iteration: ', j )
-					print('Norm of Fu: ', np.linalg.norm(self.Fu[j,:,:],ord='fro') )
-					print('Norm of Quu: ', np.linalg.norm(Quu,ord='fro'))
-					print('Norm FuVxxFu: ', np.linalg.norm(self.Fu[j,:,:].T.dot(self.Vxx[j+1,:,:].dot(self.Fu[j,:,:])),ord='fro'))
-					print('Norm of Vxx(i+1): ', np.linalg.norm(self.Vxx[j+1,:,:],ord='fro'))
-					bp()
-					Quu+=1e-5*np.eye(Quu.shape[0])
-				Quu_inv = np.linalg.inv(Quu)
+				Quubar_inv = np.linalg.inv(Quubar)
 
-			self.L_k[j,:,:] = -Quu_inv.dot(Qux.T) 
-			self.l_k[j,:] = -Quu_inv.dot(Qu)
-
-			self.V[j] = Q0 + Qu.T.dot(self.l_k[j,:])+0.5*self.l_k[j,:].T.dot(Quu.dot(self.l_k[j,:]))
-			self.Vx[j,:] = Qx + self.L_k[j,:,:].T.dot(Qu)+self.l_k[j,:].dot(Qxu)+self.L_k[j,:,:].T.dot(Quu.dot(self.l_k[j,:]))
-			self.Vxx[j,:,:] = Qxx + self.L_k[j,:,:].T.dot(Qxu) + Qux.dot(self.L_k[j,:,:]) + self.L_k[j,:,:].T.dot(Quu.dot(self.L_k[j,:,:]))
-			#print('Norm of Vxx: ', np.linalg.norm(self.Vxx[j,:,:],ord='fro'))
-	def update_control(self):
-		for j in range(self.N-1):
-			self.du[j,:] = self.l_k[j,:] + self.L_k[j,:,:].dot(self.dx[j,:])
-			self.dx[j+1,:] = self.Fx[j,:,:].dot(self.dx[j,:])+self.Fu[j,:,:].dot(self.du[j,:])
-			
-		if not self.linesearch:
-			self.U = self.U + self.lr *self.du
-		elif self.linesearch:
-			lrs = self.lrs[np.newaxis,np.newaxis,:]
-			self.Uls = self.Uls + lrs*self.du[:,:,np.newaxis]
-
-
-	def trajectory_rollout(self,render=False,linesearch=False):
-		if not linesearch:
-			cost = 0
-			for j in range(self.N-1):
-				self.X[j+1,:] = self.dynamics(self.X[j,:], self.U[j,:])
-				cost += self.running_cost(self.X[j,:],self.U[j,:])*self.dt
-			cost += self.terminal_cost(self.X[-1,:])
-			return cost
 		
-		elif linesearch:
-			cost = np.zeros((self.lrs.shape[0],))
-			for i in range(len(cost)):
-				for j in range(self.N-1):
-					self.Xls[j+1,:,i] = self.dynamics(self.Xls[j,:,i], self.Uls[j,:,i])
-					cost[i] += self.running_cost(self.Xls[j,:,i], self.Uls[j,:,i])*self.dt
-				cost[i] += self.terminal_cost(self.Xls[-1,:,i])
-			iopt = np.argmin(cost)
-			#print('Linesearch index: ', iopt)
-			#bp()
-			self.X[:,:]=self.Xls[:,:,iopt]
-			self.U[:,:]=self.Uls[:,:,iopt]
-			self.iopt = iopt
-			self.update_Xls_Uls()
+				self.K[j,:,:] = -Quubar_inv.dot(Quxbar.T) 
+				self.k[j,:] = -Quubar_inv.dot(Qu)
 
-			return cost[iopt]
+				#DeltaV =  Qu.T.dot(self.k[j,:])+0.5*self.k[j,:].T.dot(Quu.dot(self.k[j,:])) #not needed?
+				Vx = Qx + self.K[j,:,:].T.dot(Quu.dot(self.k[j,:])) + self.K[j,:,:].T.dot(Qu) + Qux.T.dot(self.k[j,:]) 
+				Vxx = Qxx + self.K[j,:,:].T.dot(Quu.dot(self.K[j,:,:])) + self.K[j,:,:].T.dot(Qux) + Qux.T.dot(self.K[j,:,:]) 
+				#self.DeltaJ+=self.alpha*self.k[j,:].T.dot(Qu) + 0.5*self.alpha**2 *self.k[j,:].T.dot(Quu.dot(self.k[j,:]))
+				j -= 1
+		if not self.early_termination:
+			self.decrease_mu() # decrease mu if backward pass was successful
+			self.patience = self.patience_reset_value #reset patience value
+		else:
+			return
+
 
 
 	def dynamics(self,x,u,compute_grads = False):
@@ -253,7 +242,25 @@ class DDP_Traj_Optimizer():
 			return x_next
 
 	def is_invertible(self,M):
-		return M.shape[0]==M.shape[1] and np.linalg.matrix_rank(M) == M.shape[0]
+		if M.shape[0] == 1 and abs(M)<1e-6:
+			return False
+		else:
+			return M.shape[0]==M.shape[1] and np.linalg.matrix_rank(M) == M.shape[0]
+
+	def check_inf_nan(self,x):
+		if np.isnan(x).any() or (abs(x)>1e4).any():
+			return True
+		else: 
+			return False
+
+	def increase_mu(self):
+		self.DELTA = max(self.DELTA0,self.DELTA*self.DELTA0)
+		self.mu = max(self.mu_min,self.mu*self.DELTA)
+
+	def decrease_mu(self):
+		self.DELTA = min(1.0/self.DELTA0, self.DELTA/self.DELTA0)
+		self.mu = self.mu*self.DELTA if self.mu*self.DELTA>self.mu_min else 0.0
+
 
 	def simulate_traj(self, X, U, render = False):
 		cost = 0
@@ -268,7 +275,16 @@ class DDP_Traj_Optimizer():
 				self.gui.stateMachine().renderWorld(self.world)
 				time.sleep(self.dt)
 			cost += self.running_cost(X[j,:],U[j,:])*self.dt
-		cost += self.terminal_cost(self.X[-1,:])
+		cost += self.terminal_cost(X[-1,:])
+
+		if render: # repeat animation 5 times
+			for _ in range(5):
+				time.sleep(10*self.dt)
+				for j in range(self.N-1):
+					X[j+1,:] = self.dynamics(X[j,:], U[j,:])
+					self.gui.stateMachine().renderWorld(self.world)
+					time.sleep(self.dt)
+
 		return cost
 
 
