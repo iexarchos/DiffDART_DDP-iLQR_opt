@@ -8,6 +8,8 @@ from envs.half_cheetah import DartHalfCheetahEnv
 from envs.inverted_double_pendulum import DartDoubleInvertedPendulumEnv
 from envs.dog import DartDogEnv
 from envs.hopper import DartHopperEnv
+from envs.catapult import Catapult
+from envs.jumpworm import JumpWorm
 import diffdart as dart
 
 
@@ -24,11 +26,11 @@ def main():
 	#Env = DartReacher2dEnv
 	#X0 = None
 
-	Env = DartDoubleInvertedPendulumEnv
-	X0 = [0., 3.14, 0.0, 0., 0., 0.] 
+	#Env = DartDoubleInvertedPendulumEnv
+	#X0 = [0., 3.14, 0.0, 0., 0., 0.] 
 
-	#Env = DartHalfCheetahEnv
-	#X0 = None
+	Env = DartHalfCheetahEnv
+	X0 = None
 
 	#Env = DartDogEnv
 	#X0 = None
@@ -36,12 +38,17 @@ def main():
 	#Env = DartHopperEnv
 	#X0 = None
 
+	#Env = Catapult
+	#X0 = None
+
+	#Env = JumpWorm
+	#X0 = None
 	
 	FD = False #whether or not to use finite differencing
 	U_guess = 'random'# 'random' #choose None or 'random' (use random for snake)
 	T = 2.0 # planning horizon in seconds
 	lr = 1.0 #learning rate, default value 1.0
-	patience = 8
+	patience = 15
 
 	maxIter = 500# maximum number of iterations
 	threshold = None #0.0001#Optional, set to 'None' otherwise. Early stopping of optimization if cost doesn't improve more than this between iterations.
