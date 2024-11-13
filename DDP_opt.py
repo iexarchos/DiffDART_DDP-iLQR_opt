@@ -89,14 +89,14 @@ class DDP_Traj_Optimizer():
 
 	def optimize(self,maxIter,thresh=None):
 		t = time.time()
-		self.cost = self.simulate_traj(self.X, self.U)
+		#self.cost = self.simulate_traj(self.X, self.U)
 		prev_cost = np.inf
 		i = 0
-		while i < maxIter and not self.early_termination:
+		self.DDP_iter = -1
+		while i < maxIter+1 and not self.early_termination:
 			#curr_cost = self.forward_pass()
 			self.forward_pass()
 			self.backward_pass()
-			self.Costs.append(self.cost)
 
 			print('Iteration: ', i+1, ', trajectory cost: ', self.cost)
 
@@ -131,6 +131,8 @@ class DDP_Traj_Optimizer():
 			Xnew[j+1,:], self.Fx[j,:,:], self.Fu[j,:,:] = self.dynamics(Xnew[j,:],Unew[j,:],compute_grads=True)
 		
 		cost+= self.terminal_cost(Xnew[-1,:])
+		if self.DDP_iter==-1:
+			self.cost = cost.copy()
 		
 		#Linesearch back-tracking
 		if  self.check_inf_nan(cost) or  self.check_inf_nan(Xnew[-1,:]) or not (self.cost - cost) >= 0:
@@ -146,7 +148,9 @@ class DDP_Traj_Optimizer():
 		else:
 			self.X=Xnew
 			self.U=Unew
-			self.cost = cost
+			self.cost = cost.copy()
+			self.Costs.append(self.cost[0])
+			self.DDP_iter+=1
 			self.patience = self.patience_reset_value #reset linesearch patience
 			self.alpha = self.alpha_reset_value #reset learning rate
 			#return cost
